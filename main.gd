@@ -42,7 +42,9 @@ func _load_fusion():
 
 func _on_ready(config):
 	var info = config["info"]
-	status.text = "Ready\n%d × %d\n%d fps · %d frames\nVAPX: %s" % [int(info["w"]), int(info["h"]), int(info["fps"]), int(info["f"]), str(int(info["isVapx"]) == 1)]
+	var playback = vap.get_playback_info()
+	var audio_status = "streaming" if playback["has_audio"] and playback["audio_enabled"] else ("disabled" if playback["has_audio"] else "no track")
+	status.text = "Ready\n%d × %d\n%d fps · %d frames\nVAPX: %s\nAudio: %s" % [int(info["w"]), int(info["h"]), int(info["fps"]), int(info["f"]), str(int(info["isVapx"]) == 1), audio_status]
 
 
 func _on_started():

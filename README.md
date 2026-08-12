@@ -17,7 +17,7 @@
 | 逐帧遮罩 | ✅ | `frame`、`mFrame`、`mt=0/90`、`z` |
 | 图片适配 | ✅ | `fitXY`、`centerFull` |
 | 播放控制 | ✅ | 播放、暂停、恢复、停止、逐帧 seek |
-| MP4 音轨 | ❌ | 当前 Godot 3.x 版只解码视频帧，不播放声音 |
+| MP4 音轨 | ✅ | Media Foundation 增量解码，`AudioStreamGenerator` 流式播放 |
 
 ## 项目关系
 
@@ -70,6 +70,7 @@ res://addons/godot_vap/vap_player.gd
 
 ```gdscript
 func _ready():
+    $VAPPlayer.enable_audio = true
     $VAPPlayer.connect("animation_ready", self, "_on_vap_ready")
     $VAPPlayer.connect("animation_error", self, "_on_vap_error")
     $VAPPlayer.load_vap_video("res://effects/gift.mp4")
@@ -120,14 +121,13 @@ func _on_resource_needed(resource_id, resource_type):
 - “普通 VAP”播放 `demo/video.mp4`。
 - “VAPX 动态融合”播放 `demo/vapx.mp4`。
 - VAPX demo 会注入绿色头像和 `Godot VAP` 文字。
+- `demo/video.mp4` 本身没有音轨；要验证声音请选择带音轨的 `demo/vapx.mp4`。
 
 ## 音频说明
 
-当前 MP4 解码器只选择第一条视频流并输出 RGBA8，音频流没有被解码。因此：
+播放器支持直接播放 MP4 内的音轨。addon 默认保持 `enable_audio = false`，避免接入旧项目后突然发声；需要声音时在 Inspector 或代码中开启。Demo 已默认开启。
 
-- 透明动画与融合效果正常；
-- MP4 自带 AAC 等音轨不会发声；
-- 需要声音时，推荐将音频单独导出为 OGG/WAV，用 `AudioStreamPlayer` 与 VAP 同时开始播放。
+实现上没有让音频和视频争用同一个顺序解码器：视频和音频分别使用独立的 Media Foundation `SourceReader`，音频以 Float PCM 小块持续喂给 `AudioStreamGenerator`。这和 GoZen 的核心思路一致——分离解码上下文并流式消费——只是 Godot 3.x Windows 版后端使用 Media Foundation，而不是 `AudioStreamFFmpeg`。
 
 ## 当前边界
 

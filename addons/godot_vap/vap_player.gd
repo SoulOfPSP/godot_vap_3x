@@ -10,6 +10,7 @@ signal fusion_resource_ready(resource_id)
 
 export(bool) var autoplay = false
 export(bool) var loop = false
+export(bool) var enable_audio = false
 export(bool) var debug = false
 
 const Decoder = preload("res://addons/godot_mp4_decoder/native/mp4_decoder.gdns")
@@ -29,6 +30,8 @@ var _video_texture = null
 var _frame_time = 1.0 / 30.0
 var _time_accumulator = 0.0
 var _video_loaded = false
+var _audio_player = null
+var _audio_playback = null
 
 
 func _ready():
@@ -42,6 +45,9 @@ func _ready():
 	material.shader = COMPOSITOR_SHADER
 	_base_rect.material = material
 	add_child(_base_rect)
+	_audio_player = AudioStreamPlayer.new()
+	_audio_player.name = "Audio"
+	add_child(_audio_player)
 
 	fusion_manager = FusionManager.new()
 	fusion_manager.name = "FusionLayer"
@@ -88,6 +94,7 @@ func load_vap_video(video_path, config_path = ""):
 		return false
 
 	_frame_time = 1.0 / max(1.0, float(video_info["fps"]))
+	_configure_audio()
 	_configure_compositor()
 	if not _decoder.decode_next_frame():
 		_fail(_decoder.get_last_error())
@@ -145,6 +152,11 @@ func play():
 		return
 	is_playing = true
 	set_process(true)
+	if _audio_player.stream != null:
+		if _audio_player.playing:
+			_audio_player.stream_paused = false
+		else:
+			_restart_audio_at(float(current_frame) / max(1.0, float(video_info["fps"])))
 	emit_signal("animation_started")
 
 
@@ -152,6 +164,10 @@ func stop():
 	is_playing = false
 	set_process(false)
 	_time_accumulator = 0.0
+	if _audio_player != null:
+		_audio_player.stop()
+		_audio_player.stream = null
+	_audio_playback = null
 	if _decoder != null:
 		_decoder.close()
 		_decoder = null
@@ -161,6 +177,8 @@ func stop():
 func pause():
 	is_playing = false
 	set_process(false)
+	if _audio_player != null:
+		_audio_player.stream_paused = true
 
 
 func resume():
@@ -182,6 +200,8 @@ func seek_to_frame(frame):
 	_update_video_texture()
 	fusion_manager.present_frame(frame)
 	emit_signal("frame_changed", frame)
+	if _audio_player.stream != null:
+		_restart_audio_at(float(frame) / max(1.0, float(video_info["fps"])))
 
 
 func get_playback_info():
@@ -195,6 +215,8 @@ func get_playback_info():
 		"video_size": Vector2(int(video_info.get("videoW", 0)), int(video_info.get("videoH", 0))),
 		"is_fusion": int(video_info.get("isVapx", 0)) == 1,
 		"fusion_resources": fusion_manager.loaded_textures.size() if fusion_manager != null else 0,
+		"audio_enabled": enable_audio,
+		"has_audio": _decoder != null and _decoder.has_audio(),
 	}
 
 
@@ -223,6 +245,7 @@ func get_content_display_rect():
 func _process(delta):
 	if not is_playing or _decoder == null:
 		return
+	_fill_audio_buffer()
 	_time_accumulator += delta
 	var decoded = 0
 	while _time_accumulator >= _frame_time and decoded < 3:
@@ -230,9 +253,14 @@ func _process(delta):
 		if not _decoder.decode_next_frame():
 			if loop and _decoder.seek_start() and _decoder.decode_next_frame():
 				current_frame = 0
+				if _audio_player.stream != null:
+					_restart_audio_at(0.0)
 			else:
 				is_playing = false
 				set_process(false)
+				if _audio_player != null:
+					_audio_player.stop()
+				_audio_playback = null
 				emit_signal("animation_finished")
 				return
 		else:
@@ -241,6 +269,40 @@ func _process(delta):
 		fusion_manager.present_frame(current_frame)
 		emit_signal("frame_changed", current_frame)
 		decoded += 1
+
+
+func _configure_audio():
+	_audio_player.stop()
+	_audio_player.stream = null
+	_audio_playback = null
+	if not enable_audio or not _decoder.has_audio():
+		return
+	var stream = AudioStreamGenerator.new()
+	stream.mix_rate = _decoder.get_audio_sample_rate()
+	stream.buffer_length = 0.5
+	_audio_player.stream = stream
+
+
+func _fill_audio_buffer():
+	if _audio_playback == null or _decoder == null or not _decoder.has_audio():
+		return
+	var available = _audio_playback.get_frames_available()
+	if available <= 0:
+		return
+	var frames = _decoder.decode_audio_frames(min(available, 4096))
+	if frames.size() > 0:
+		_audio_playback.push_buffer(frames)
+
+
+func _restart_audio_at(seconds):
+	if _audio_player.stream == null or _decoder == null or not _decoder.has_audio():
+		return
+	_decoder.seek_audio(max(0.0, float(seconds)))
+	_audio_player.stop()
+	_audio_player.play()
+	_audio_playback = _audio_player.get_stream_playback()
+	_fill_audio_buffer()
+	_audio_player.stream_paused = not is_playing
 
 
 func _configure_compositor():
