@@ -1,0 +1,13 @@
+# Godot generated data
+.import/
+.godot/
+
+# Runtime/editor logs
+*.log
+addons/godot_mp4_decoder/bin/windows/libmp4_decoder_native.a
+
+# Local editor/system files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

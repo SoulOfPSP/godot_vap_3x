@@ -1,0 +1,14 @@
+[general]
+
+singleton=false
+load_once=true
+symbol_prefix="godot_"
+reloadable=true
+
+[entry]
+
+Windows.64="res://addons/godot_mp4_decoder/bin/windows/mp4_decoder_native.dll"
+
+[dependencies]
+
+Windows.64=["res://addons/godot_mp4_decoder/bin/windows/libwinpthread-1.dll"]
