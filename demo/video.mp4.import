@@ -1,0 +1,13 @@
+[remap]
+
+importer="godot_vap.mp4_path"
+type="Resource"
+path="res://.import/video.mp4-305a6f22ff35c5d3421a668271552ab4.res"
+
+[deps]
+
+source_file="res://demo/video.mp4"
+dest_files=[ "res://.import/video.mp4-305a6f22ff35c5d3421a668271552ab4.res" ]
+
+[params]
+
