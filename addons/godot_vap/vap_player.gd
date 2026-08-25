@@ -231,6 +231,19 @@ func get_fusion_source_config(resource_id):
 	return fusion_manager.get_source_config(str(resource_id)) if fusion_manager != null else {}
 
 
+func add_fusion_follower(resource_id, node, follow_size = false, offset = Vector2.ZERO, z_offset = 1):
+	if fusion_manager == null:
+		_fail("Fusion manager is not ready")
+		return false
+	return fusion_manager.add_follower(str(resource_id), node, follow_size, offset, z_offset)
+
+
+func remove_fusion_follower(resource_id, node):
+	if fusion_manager == null:
+		return false
+	return fusion_manager.remove_follower(str(resource_id), node)
+
+
 func get_video_texture():
 	return _video_texture
 

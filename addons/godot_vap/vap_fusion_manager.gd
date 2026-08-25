@@ -12,6 +12,7 @@ var resource_configs = {}
 var frame_map = {}
 var loaded_textures = {}
 var fusion_elements = {}
+var followers = {}
 var _resource_versions = {}
 var _current_frame = 0
 var _is_fusion = false
@@ -92,14 +93,19 @@ func present_frame(frame_number):
 	for element in fusion_elements.values():
 		if is_instance_valid(element):
 			element.visible = false
+	_hide_followers()
 	if not _is_fusion or not frame_map.has(frame_number):
 		return
 	for object in frame_map[frame_number]:
 		var resource_id = str(object["srcId"])
+		# 跟随实例只需要 VAPX 的 frame 位置，不依赖蒙版图片是否已设置。
+		# 因此先更新 follower，再判断是否需要绘制被 mFrame 裁切的图片。
+		var display_rect = _get_frame_display_rect(object)
+		_apply_followers(resource_id, display_rect, int(object.get("z", 0)))
 		if not loaded_textures.has(resource_id):
 			continue
 		var element = _ensure_element(resource_id)
-		_apply_frame_object(element, object, resource_configs[resource_id])
+		_apply_frame_object(element, object, resource_configs[resource_id], display_rect)
 
 
 func bind_video_texture():
@@ -120,10 +126,55 @@ func clear():
 	_resource_versions.clear()
 	_current_frame = 0
 	_is_fusion = false
+	_hide_followers()
 
 
 func get_source_config(resource_id):
 	return resource_configs.get(str(resource_id), {}).duplicate(true)
+
+
+func add_follower(resource_id, node, follow_size = false, offset = Vector2.ZERO, z_offset = 1):
+	resource_id = str(resource_id)
+	if not resource_configs.has(resource_id):
+		return _fail("Unknown VAPX follower resource: " + resource_id)
+	if not is_instance_valid(node) or not (node is Control or node is Node2D):
+		return _fail("VAPX follower must be an unparented Control or Node2D")
+	if node.get_parent() != null:
+		return _fail("VAPX follower must be unparented so it can be placed above the video")
+	# follower 加到 FusionLayer 的最后面，所以显示在视频和融合图片上层；
+	# 它自身不使用 vap_fusion_mask.shader，因此不会被 mFrame 裁切。
+	add_child(node)
+	var binding = {
+		"node": node,
+		"follow_size": bool(follow_size),
+		"offset": offset,
+		"z_offset": int(z_offset),
+		# 记录场景里原本设置的 scale，逐帧缩放都以它为 100% 基准。
+		"base_scale": node.scale if node is Node2D else Vector2.ONE,
+	}
+	if not followers.has(resource_id):
+		followers[resource_id] = []
+	followers[resource_id].append(binding)
+	node.visible = false
+	present_frame(_current_frame)
+	return true
+
+
+func remove_follower(resource_id, node):
+	resource_id = str(resource_id)
+	if not followers.has(resource_id):
+		return false
+	var bindings = followers[resource_id]
+	for index in range(bindings.size() - 1, -1, -1):
+		if bindings[index].get("node") == node:
+			bindings.remove(index)
+	if bindings.empty():
+		followers.erase(resource_id)
+	if is_instance_valid(node):
+		node.visible = false
+		if node.get_parent() == self:
+			remove_child(node)
+	return true
 
 
 func _valid_source(source):
@@ -230,13 +281,20 @@ func _configure_fit(element, source):
 		element.stretch_mode = TextureRect.STRETCH_SCALE
 
 
-func _apply_frame_object(element, object, source):
+func _get_frame_display_rect(object):
 	var frame = object["frame"]
-	var mask_frame = object["mFrame"]
 	var content_rect = player.get_content_display_rect()
 	var scale = content_rect.size.x / float(video_info["w"])
-	element.rect_position = content_rect.position + Vector2(float(frame[0]), float(frame[1])) * scale
-	element.rect_size = Vector2(float(frame[2]), float(frame[3])) * scale
+	return Rect2(
+		content_rect.position + Vector2(float(frame[0]), float(frame[1])) * scale,
+		Vector2(float(frame[2]), float(frame[3])) * scale
+	)
+
+
+func _apply_frame_object(element, object, source, display_rect):
+	var mask_frame = object["mFrame"]
+	element.rect_position = display_rect.position
+	element.rect_size = display_rect.size
 	element.set("z_index", int(object.get("z", 0)))
 	element.visible = true
 	var material = element.material
@@ -250,6 +308,51 @@ func _apply_frame_object(element, object, source):
 	material.set_shader_param("use_fill", str(source["srcType"]) == "txt")
 	material.set_shader_param("fill_color", _parse_color(source.get("color", "#FFFFFF")))
 	_bind_mask_texture(element)
+
+
+func _hide_followers():
+	for bindings in followers.values():
+		for binding in bindings:
+			var node = binding.get("node")
+			if is_instance_valid(node):
+				node.visible = false
+
+
+func _apply_followers(resource_id, display_rect, source_z):
+	if not followers.has(resource_id):
+		return
+	for binding in followers[resource_id]:
+		var node = binding.get("node")
+		if not is_instance_valid(node):
+			continue
+		var offset = binding.get("offset", Vector2.ZERO)
+		if node is Node2D:
+			node.z_index = source_z + int(binding.get("z_offset", 1))
+		else:
+			# Godot 3 Control nodes use scene-tree order instead of z_index.
+			node.raise()
+		if node is Control:
+			# Control：可选择让 rect_size 与蒙版的显示尺寸完全一致。
+			if bool(binding.get("follow_size", false)):
+				node.rect_size = display_rect.size
+			# 无论是否同步尺寸，都让 Control 的中心跟随蒙版中心。
+			node.rect_position = display_rect.position + (display_rect.size - node.rect_size) * 0.5 + offset
+		else:
+			# Node2D：它的原点跟随蒙版中心；Node2D.tscn 的内容应围绕 (0, 0) 制作。
+			node.position = display_rect.position + display_rect.size * 0.5 + offset
+			if bool(binding.get("follow_size", false)):
+				var source = resource_configs.get(resource_id, {})
+				# src.w/src.h 是导出器记录的蒙版完整尺寸，视为 100% 大小。
+				var source_size = Vector2(
+					max(1.0, float(source.get("w", 1))),
+					max(1.0, float(source.get("h", 1)))
+				)
+				# display_rect 已经过播放器适配缩放，先换回 VAP 内容坐标尺寸。
+				var content_scale = player.get_content_display_rect().size.x / max(1.0, float(video_info["w"]))
+				var frame_size = display_rect.size / max(0.0001, content_scale)
+				# 当前 frame / 完整资源尺寸 = 本帧缩放比例，再乘实例原始 scale。
+				node.scale = binding.get("base_scale", Vector2.ONE) * frame_size / source_size
+		node.visible = true
 
 
 func _bind_mask_texture(element):

@@ -101,6 +101,20 @@ func _on_resource_needed(resource_id, resource_type):
 
 文字接受 `String`；图片接受 `Texture` 或 `Image`。播放途中可以再次调用 `set_fusion_resource()` 更新内容。
 
+### 让其他实例跟随融合元素
+
+可以把一个尚未加入场景树的 `Control` 或 `Node2D` 绑定到指定 `srcId`。跟随实例会放在视频上层，只复用逐帧位置，不会应用 `mFrame` 遮罩：
+
+```gdscript
+func _on_vap_ready(_config):
+    var badge = preload("res://ui/avatar_badge.tscn").instance()
+    # false：保持 badge 自身尺寸，以头像遮罩中心为跟随点。
+    # Vector2(0, -80)：相对头像中心向上偏移 80 像素。
+    $VAPPlayer.add_fusion_follower("0", badge, false, Vector2(0, -80))
+```
+
+传入 `follow_size = true` 时，`Control` 会同步逐帧尺寸；`Node2D` 会在保留初始 `scale` 的基础上，按照遮罩相对于 VAP 资源声明宽高的比例逐帧缩放。调用 `remove_fusion_follower(src_id, node)` 可以解除绑定；解除后节点会从播放器中移除，但不会被释放。
+
 ## 公共 API
 
 | API | 用途 |
@@ -110,6 +124,8 @@ func _on_resource_needed(resource_id, resource_type):
 | `seek_to_frame(frame)` | 从头解码到目标帧 |
 | `set_fusion_resource(id, data)` | 设置文字、Texture 或 Image |
 | `get_fusion_source_config(id)` | 查询 `vapc.src` 声明 |
+| `add_fusion_follower(id, node, follow_size, offset, z_offset)` | 让未入树的 Control/Node2D 在视频上层跟随融合元素 |
+| `remove_fusion_follower(id, node)` | 解除跟随并移出播放器，不释放节点 |
 | `get_playback_info()` | 当前帧、帧率、尺寸和融合状态 |
 
 信号与 Godot 4 版保持一致：`animation_ready`、`animation_started`、`animation_finished`、`animation_error`、`frame_changed`、`fusion_resource_needed`、`fusion_resource_ready`。
@@ -119,8 +135,10 @@ func _on_resource_needed(resource_id, resource_type):
 用 Godot 3.5.3 打开本目录并运行主场景：
 
 - “普通 VAP”播放 `demo/video.mp4`。
-- “VAPX 动态融合”播放 `demo/vapx.mp4`。
-- VAPX demo 会注入绿色头像和 `Godot VAP` 文字。
+- “双蒙版跟随 Demo”播放 `demo/video2.mp4`。
+- `srcId=0`（`img0`）注入 `demo/image (4).jpg`，并按逐帧 `mFrame` 遮罩显示头像。
+- `srcId=1`（`img1`）不注入图片，只驱动 `Node2D.tscn` 在视频上层移动和缩放，不受 `mFrame` 裁切。
+- 工程中的 `demo/vapx.mp4` 仍可用于测试文字与图片同时融合。
 - `demo/video.mp4` 本身没有音轨；要验证声音请选择带音轨的 `demo/vapx.mp4`。
 
 ## 音频说明
