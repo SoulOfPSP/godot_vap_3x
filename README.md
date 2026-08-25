@@ -135,10 +135,8 @@ func _on_vap_ready(_config):
 用 Godot 3.5.3 打开本目录并运行主场景：
 
 - “普通 VAP”播放 `demo/video.mp4`。
-- “双蒙版跟随 Demo”播放 `demo/video2.mp4`。
-- `srcId=0`（`img0`）注入 `demo/image (4).jpg`，并按逐帧 `mFrame` 遮罩显示头像。
-- `srcId=1`（`img1`）不注入图片，只驱动 `Node2D.tscn` 在视频上层移动和缩放，不受 `mFrame` 裁切。
-- 工程中的 `demo/vapx.mp4` 仍可用于测试文字与图片同时融合。
+- “VAPX 动态融合”播放 `demo/vapx.mp4`。
+- VAPX demo 会注入绿色头像和 `Godot VAP` 文字。
 - `demo/video.mp4` 本身没有音轨；要验证声音请选择带音轨的 `demo/vapx.mp4`。
 
 ## 音频说明
